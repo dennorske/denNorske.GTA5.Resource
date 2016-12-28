@@ -23,17 +23,18 @@ public class Freeroam : Script
 
     #region Commands
     [Command("v", GreedyArg = true)]
-    public void spawnVehicle(Client player)
+    public void spawnVehicle(Client player, string carname)
     {
+        VehicleHash hash = API.vehicleNameToModel(carname);
         var pos = API.getEntityPosition(player);
-
         // var spawnPos = pos; // Car Spawnpoint
         var heading = API.getEntityRotation(player);
 
-        var car = API.createVehicle(hash, pos, heading, 0, 0);
-        API.setLocalEntityData(car, "RESPAWNABLE", true);
-        API.setLocalEntityData(car, "SPAWN_POS", spawnPos);
-        API.setLocalEntityData(car, "SPAWN_ROT", heading);
+        var car = API.createVehicle(hash, pos, new Vector3(0,0, heading.Z), 0, 0);
+        API.setEntityData(car, "RESPAWNABLE", true);
+        API.setEntityData(car, "SPAWN_POS", pos);
+        API.setEntityData(car, "SPAWN_ROT", heading);
+
     }
 
     #endregion
