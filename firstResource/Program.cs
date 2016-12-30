@@ -60,6 +60,7 @@ namespace denNorske.gta5.gamemode
         {
 
             Players.Add(new Player(sender, sender.handle));
+            API.setPlayerSkin(sender, API.pedNameToModel("Indian01AMY"));
             API.sendChatMessageToAll(sender.name + " has connected to the server!");
 
         }

@@ -1,6 +1,6 @@
 # resource1
 GTA:N resource files 
 
-## I HAVE NO IDEA WHAT IM DOiNG ==
+## Resource file(s) for GTA 5 - testing out==
 
-Please send help ^_^ !
+Please send help
