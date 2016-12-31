@@ -4,12 +4,96 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using GTANetwork;
+using MySql.Data.MySqlClient;
 using GTANetworkShared;
 using GTANetworkServer;
 
 
 namespace denNorske.gta5.gamemode
 {
+    class DBConnect
+    {
+        private MySqlConnection connection;
+        private string server;
+        private string database;
+        private string uid;
+        private string password;
+
+        //Constructor
+        public DBConnect()
+        {
+            Initialize();
+        }
+
+        //Initialize values
+        private void Initialize()
+        {
+            server = "localhost";
+            database = "dennorske.gta5";
+            uid = "dennorske.gta5";
+            password = "simenl13";
+            string connectionString;
+            connectionString = "SERVER=" + server + ";" + "DATABASE=" +
+            database + ";" + "UID=" + uid + ";" + "PASSWORD=" + password + ";";
+
+            connection = new MySqlConnection(connectionString);
+        }
+
+        //open connection to database
+        private bool OpenConnection()
+        {
+            try
+            {
+                connection.Open();
+                return true;
+            }
+            catch (MySqlException ex)
+            {
+                //When handling errors, you can your application's response based 
+                //on the error number.
+                //The two most common error numbers when connecting are as follows:
+                //0: Cannot connect to server.
+                //1045: Invalid user name and/or password.
+                switch (ex.Number)
+                {
+                    case 0:
+                        API.shared.consoleOutput("Cannot connect to server.  Contact administrator");
+                        break;
+
+                    case 1045:
+                        API.shared.consoleOutput("Invalid username/password, please try again");
+                        break;
+                }
+                return false;
+            }
+        }
+
+        //Close connection
+        private bool CloseConnection()
+        {
+            try
+            {
+                connection.Close();
+                return true;
+            }
+            catch (MySqlException ex)
+            {
+                API.shared.consoleOutput(ex.Message);
+                return false;
+            }
+        }
+        
+        //Backup
+        public void Backup()
+        {
+        }
+
+        //Restore
+        public void Restore()
+        {
+        }
+    }
+
     public class Freeroam : Script
     {
         
@@ -19,7 +103,7 @@ namespace denNorske.gta5.gamemode
        
 
         #region Commands
-        [Command(GreedyArg = true, ACLRequired = true)]
+        [Command(GreedyArg = true)]
         public void v(Client player, string carname)
         {
             VehicleHash vHash = API.vehicleNameToModel(carname);
@@ -34,15 +118,25 @@ namespace denNorske.gta5.gamemode
             API.sendChatMessageToPlayer(player, "Server", "~w~A ~r~" + carname + "~w~ has been spawned for you. Enjoy!");
             API.setPlayerIntoVehicle(player, car, 0);
             CarInfo car2 = new CarInfo(car, player); //make a new object out of it
-            Cars.Add(car2);
-            string playerName = API.getPlayerName(player);
-            Player.VehDic.Add(car.handle, playerName);
+            Cars.Add(car2); //add to object list 
+            foreach(Player pl in Players)
+            {
+                if(pl.player == player)
+                {
+                    pl.carHandle = car;
+                }
+            }
 
 
 
 
         }
 
+        [Command(GreedyArg = true, SensitiveInfo = true)]
+        public void register(Client player, string password)
+        {
+            
+        }
         #endregion
 
         #region other publics
@@ -94,21 +188,21 @@ namespace denNorske.gta5.gamemode
             }
             else
             {
-                foreach (CarInfo i in Cars)
-                {
-                    if (i.handle == handle)
-                    {
-                        API.deleteEntity(i.handle);//delete the chassis
 
-                        string name;
-                        if (Player.VehDic.TryGetValue(i.handle, out name) == true)
-                            Player.VehDic.Remove(i.handle); //remove the vehicle entry from the list
+                foreach (CarInfo car in Cars)
+                {
+                    if (car.handle == handle)
+                    {
+                        Cars.Remove(car);
+                        API.deleteEntity(car.handle);//delete the chassis
                     }
                 }
+            }   
+                
 
 
                 // ...
-            }
+            
 
         }
       /*  public void onVehicleExplode(NetHandle vehicle)
@@ -138,15 +232,16 @@ namespace denNorske.gta5.gamemode
 
     public class Player
     {
-        public NetHandle netHandle;
+        public NetHandle playerHandle;
         public Client player;
+        public NetHandle carHandle;
         public string playerName;
         public static Dictionary<NetHandle, string> VehDic = new Dictionary<NetHandle, string>();
 
-        public Player(Client player, NetHandle netHandle)
+        public Player(Client player, NetHandle playerHandle)
         {
             this.player = player;
-            this.netHandle = netHandle;
+            this.playerHandle = playerHandle;
             this.playerName = API.shared.getPlayerName(player);
         }
     }
