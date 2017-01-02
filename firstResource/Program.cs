@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using GTANetwork;
+using System.Diagnostics;
 using MySql.Data.MySqlClient;
 using GTANetworkShared;
 using GTANetworkServer;
@@ -11,32 +13,35 @@ using GTANetworkServer;
 
 namespace denNorske.gta5.gamemode
 {
-    class DBConnect
+    public class Database
     {
-        private MySqlConnection connection;
+        public MySqlConnection connection;
         private string server;
         private string database;
         private string uid;
         private string password;
 
         //Constructor
-        public DBConnect()
+        public Database()
         {
-            Initialize();
+            connection = new MySqlConnection(GetMysqlConnectionString());
         }
 
-        //Initialize values
-        private void Initialize()
+        public string GetMysqlConnectionString()
         {
-            server = "localhost";
-            database = "dennorske.gta5";
-            uid = "dennorske.gta5";
-            password = "simenl13";
-            string connectionString;
-            connectionString = "SERVER=" + server + ";" + "DATABASE=" +
-            database + ";" + "UID=" + uid + ";" + "PASSWORD=" + password + ";";
-
-            connection = new MySqlConnection(connectionString);
+            string conStr = "";
+            try
+            {
+                using (StreamReader rdr = new StreamReader("connectionstring.txt"))
+                {
+                    conStr = rdr.ReadToEnd();
+                }
+            }
+            catch (Exception ex)
+            {
+                API.shared.consoleOutput("Failed to load MySql connectionstring file: " + ex.Message);
+            }
+            return conStr;
         }
 
         //open connection to database
@@ -63,6 +68,9 @@ namespace denNorske.gta5.gamemode
                     case 1045:
                         API.shared.consoleOutput("Invalid username/password, please try again");
                         break;
+                    default:
+                        API.shared.consoleOutput("Other error: " + ex.Number);
+                        break;
                 }
                 return false;
             }
@@ -82,25 +90,116 @@ namespace denNorske.gta5.gamemode
                 return false;
             }
         }
-        
+
         //Backup
         public void Backup()
         {
+            try
+            {
+                DateTime Time = DateTime.Now;
+                int year = Time.Year;
+                int month = Time.Month;
+                int day = Time.Day;
+                int hour = Time.Hour;
+                int minute = Time.Minute;
+                int second = Time.Second;
+
+                //Save file to C:\ with the current date as a filename
+                string path;
+                path = "C:\\MySqlBackup" + year + "-" + month + "-" + day +
+            "-" + hour + "-" + minute + "-" + second + "-" + ".sql";
+                StreamWriter file = new StreamWriter(path);
+
+
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName = "mysqldump";
+                psi.RedirectStandardInput = false;
+                psi.RedirectStandardOutput = true;
+                psi.Arguments = string.Format(@"-u{0} -p{1} -h{2} {3}",
+                    uid, password, server, database);
+                psi.UseShellExecute = false;
+
+                Process process = Process.Start(psi);
+
+                string output;
+                output = process.StandardOutput.ReadToEnd();
+                file.WriteLine(output);
+                process.WaitForExit();
+                file.Close();
+                process.Close();
+            }
+            catch (IOException ex)
+            {
+                API.shared.consoleOutput("Error , unable to backup!: " +ex);
+            }
         }
 
-        //Restore
-        public void Restore()
+        public int  CreateAccount(string username, string password)
         {
+            string myQue = "INSERT INTO users (Name, Password) values (@name, @password);";
+
+            try
+            {
+                if (this.OpenConnection() == true)
+                {
+                    MySqlCommand cmd = new MySqlCommand(myQue, connection);
+                    cmd.Parameters.AddWithValue("@name", username);
+                    cmd.Parameters.AddWithValue("@password", password);
+                    cmd.ExecuteNonQuery();
+                    this.CloseConnection();
+                    return GetUserID(username);
+                }
+
+            }
+            catch (Exception ex)
+            {
+                API.shared.consoleOutput("Error creating new user account: " + ex.Message);
+
+            }
+            
+            return 0;
         }
+       
+        public int GetUserID(string username)
+        {
+            try
+            {
+                
+                string myQue = "Select Userid from users where username = @username";
+                if (this.OpenConnection() == true)
+                {
+                    MySqlCommand cmd = new MySqlCommand(myQue, connection);
+                    cmd.Parameters.AddWithValue("@username", username);
+                    using (MySqlDataReader rdr = cmd.ExecuteReader())
+                    {
+                        if (rdr.HasRows)
+                        {
+                            while (rdr.Read())
+                            {
+                                return (int)rdr["Userid"];
+                            }
+                        }
+                    }
+                }
+            }
+            
+            catch (Exception ex)
+            {
+                API.shared.consoleOutput("Error getting user ID: " + ex.Message);
+            }
+            return 0;
+        }
+            
     }
 
     public class Freeroam : Script
     {
-        
 
+        #region vars
         public static List<CarInfo> Cars = new List<CarInfo>(); //to save car objects
         public static List<Player> Players = new List<Player>(); // holds all the player objects
-       
+        Database db = new Database();
+        #endregion
 
         #region Commands
         [Command(GreedyArg = true)]
@@ -135,7 +234,42 @@ namespace denNorske.gta5.gamemode
         [Command(GreedyArg = true, SensitiveInfo = true)]
         public void register(Client player, string password)
         {
-            
+            if (password.Length <= 5)
+            {
+                API.sendChatMessageToPlayer(player, "~r~Error: ~w~Password is not long enough, needs to be ~r~5~w~ or more characters");
+                API.sendChatMessageToPlayer(player, "~r~Syntax: ~w~/register [password]");
+            }
+            else //password is long enough
+            {
+                //hash it
+                string katt = BCrypt.Net.BCrypt.HashPassword(password);
+                //save it
+
+                foreach(Player playa in Players)
+                {
+                    if(playa.playerHandle == player.handle)
+                    {
+                        int uID = db.CreateAccount(player.name, password);
+                        if (uID != 0)
+                        {
+                            playa.userid = uID; //save the userid to the object
+                            API.sendChatMessageToPlayer(player, "~g~Success! ~w~Your account has been saved. You have been logged in, remember the password for the next time!");
+                            playa.logged_in = true;
+                            break;
+                        }
+                        else
+                        {
+                            API.sendChatMessageToPlayer(player, "~r~Error: ~w~Something when wrong when creating your account. Please try again or contact an owner..");
+                            break;
+                        }
+                    }
+                }
+                
+               
+
+                    
+                    //show dialog or any window
+            }
         }
         #endregion
 
@@ -152,10 +286,11 @@ namespace denNorske.gta5.gamemode
 
         public void onPlayerConnected(Client sender)
         {
-
+            API.sendChatMessageToPlayer(sender, "~o~Welcome! ");
             Players.Add(new Player(sender, sender.handle));
             API.setPlayerSkin(sender, API.pedNameToModel("Indian01AMY"));
             API.sendChatMessageToAll(sender.name + " has connected to the server!");
+            API.sendChatMessageToPlayer(sender, "~g~Log in or register with ~w~/login~g~ or ~w~/register");
 
         }
         private void resourcesStart()
@@ -234,6 +369,8 @@ namespace denNorske.gta5.gamemode
     {
         public NetHandle playerHandle;
         public Client player;
+        public int userid;
+        public bool logged_in = false;
         public NetHandle carHandle;
         public string playerName;
         public static Dictionary<NetHandle, string> VehDic = new Dictionary<NetHandle, string>();
