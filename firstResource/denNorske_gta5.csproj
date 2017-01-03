@@ -60,7 +60,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Program.cs" />
+    <Compile Include="data\database.cs" />
+    <Compile Include="data\userdatamanaging.cs" />
+    <Compile Include="structure\CarInfo.cs" />
+    <Compile Include="structure\Player.cs" />
+    <Compile Include="Main.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
