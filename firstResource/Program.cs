@@ -4,8 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using GTANetwork;
 using System.Diagnostics;
+using System.Data;
 using MySql.Data.MySqlClient;
 using GTANetworkShared;
 using GTANetworkServer;
@@ -41,6 +41,7 @@ namespace denNorske.gta5.gamemode
             {
                 API.shared.consoleOutput("Failed to load MySql connectionstring file: " + ex.Message);
             }
+            API.shared.consoleOutput(conStr);
             return conStr;
         }
 
@@ -62,7 +63,7 @@ namespace denNorske.gta5.gamemode
                 switch (ex.Number)
                 {
                     case 0:
-                        API.shared.consoleOutput("Cannot connect to server.  Contact administrator");
+                        API.shared.consoleOutput("Cannot connect to server.  Contact administrator"+ ex.Message +"(ex.Number"+ex.Number+")");
                         break;
 
                     case 1045:
@@ -89,6 +90,36 @@ namespace denNorske.gta5.gamemode
                 API.shared.consoleOutput(ex.Message);
                 return false;
             }
+        }
+
+        public bool userNameExist(string username)
+        {
+            bool nameFound = false;
+            string myQue = "SELECT Userid FROM users where Name = @username";
+            {
+                try
+                {
+                    if(this.OpenConnection() == true)
+                    {
+                        using (MySqlCommand cmd = new MySqlCommand(myQue, connection))
+                        {
+                            cmd.Parameters.AddWithValue("@username", username);
+                            using (MySqlDataReader rdr = cmd.ExecuteReader())
+                            {
+                                if(rdr.HasRows)
+                                {
+                                    nameFound = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch(Exception ex)
+                {
+                    API.shared.consoleOutput("Error while checking if account exists = " + ex.Message);
+                }
+            }
+            return nameFound;
         }
 
         //Backup
@@ -165,7 +196,7 @@ namespace denNorske.gta5.gamemode
             try
             {
                 
-                string myQue = "Select Userid from users where username = @username";
+                string myQue = "Select Userid from users where Name = @username";
                 if (this.OpenConnection() == true)
                 {
                     MySqlCommand cmd = new MySqlCommand(myQue, connection);
@@ -180,8 +211,10 @@ namespace denNorske.gta5.gamemode
                             }
                         }
                     }
+                    this.CloseConnection();
                 }
             }
+            
             
             catch (Exception ex)
             {
@@ -189,7 +222,80 @@ namespace denNorske.gta5.gamemode
             }
             return 0;
         }
-            
+
+        public string GetUserPass(string username)
+        {
+            string myQue = "select Password from users where Name = @username limit 0,1";
+            string hash = "";
+            try
+            {
+                if (this.OpenConnection() == true)
+                {
+                    using (MySqlCommand cmd = new MySqlCommand(myQue, connection))
+                    {
+                        cmd.Parameters.AddWithValue("@username", username);
+                        using (MySqlDataReader rdr = cmd.ExecuteReader())
+                        {
+                            if (rdr.HasRows)
+                            {
+                                while (rdr.Read())
+                                {
+                                    hash = (string)rdr["Password"];
+                                }
+                            }
+                        }
+                    }
+                    this.CloseConnection();
+                }
+            }
+            catch (Exception ex)
+            {
+                API.shared.consoleOutput("Error while checking a users password: " + ex.Message);
+            }
+            return hash;
+
+        }
+        public bool LoadUserStats(Player player)
+        {
+            string myQue = "SELECT * from users where Name = @username limit 0,1";
+            try
+            {
+                if (this.OpenConnection() == true)
+                {
+                    using (MySqlCommand cmd = new MySqlCommand(myQue, connection))
+                    {
+                        cmd.Parameters.AddWithValue("@username", player.playerName);
+                        using (MySqlDataReader rdr = cmd.ExecuteReader())
+                        {
+                            if (rdr.HasRows)
+                            {
+                                while (rdr.Read())
+                                {
+                                    player.userid = (int)rdr["Userid"];
+                                    player.skin = (int)rdr["Skin"];
+                                    player.logged_in = true; //log player in
+                                    player.kills = (int)rdr["Kills"];
+                                    player.deaths = (int)rdr["Deaths"];
+                                    player.level = (int)rdr["Level"]; //admin level
+                                    this.CloseConnection();
+                                }
+                            }
+                            else
+                                return false;
+                        }
+                    }
+                }
+                
+            }
+            catch(Exception ex)
+            {
+                API.shared.consoleOutput("Failed to retrieve player saved data: " + ex.Message);
+            }
+            return true;
+        }
+        
+
+
     }
 
     public class Freeroam : Script
@@ -206,6 +312,11 @@ namespace denNorske.gta5.gamemode
         public void v(Client player, string carname)
         {
             VehicleHash vHash = API.vehicleNameToModel(carname);
+            if (vHash == 0)
+            {
+                API.sendChatMessageToPlayer(player, "~r~Error; ~w~This car model doesn't exist.");
+                return;
+            }
             var pos = API.getEntityPosition(player);
             // var spawnPos = pos; // Car Spawnpoint
             var heading = API.getEntityRotation(player);
@@ -231,13 +342,12 @@ namespace denNorske.gta5.gamemode
 
         }
 
-        [Command(GreedyArg = true, SensitiveInfo = true)]
+        [Command("register", "~r~Usage: ~w~/register [password > 5 chars]", GreedyArg = true, SensitiveInfo = true )]
         public void register(Client player, string password)
         {
             if (password.Length <= 5)
             {
                 API.sendChatMessageToPlayer(player, "~r~Error: ~w~Password is not long enough, needs to be ~r~5~w~ or more characters");
-                API.sendChatMessageToPlayer(player, "~r~Syntax: ~w~/register [password]");
             }
             else //password is long enough
             {
@@ -245,32 +355,84 @@ namespace denNorske.gta5.gamemode
                 string katt = BCrypt.Net.BCrypt.HashPassword(password);
                 //save it
 
-                foreach(Player playa in Players)
+                foreach(Player pl in Players)
                 {
-                    if(playa.playerHandle == player.handle)
+                    if(pl.playerHandle == player.handle)
                     {
-                        int uID = db.CreateAccount(player.name, password);
-                        if (uID != 0)
+                        if (!db.userNameExist(player.name))
                         {
-                            playa.userid = uID; //save the userid to the object
-                            API.sendChatMessageToPlayer(player, "~g~Success! ~w~Your account has been saved. You have been logged in, remember the password for the next time!");
-                            playa.logged_in = true;
-                            break;
+                            int uID = db.CreateAccount(player.name, katt);
+                            if (uID != 0)
+                            {
+                                pl.userid = uID; //save the userid to the object
+                                API.sendChatMessageToPlayer(player, "~g~Success! ~w~Your account has been saved. You have been logged in, remember the password for the next time!");
+                                pl.logged_in = true;
+                                break;
+                            }
+                            else //userid was equal to 0, so something went wrong
+                            {
+                                API.sendChatMessageToPlayer(player, "~r~Error: ~w~Something when wrong when creating your account. Please try again or contact an owner..");
+                                break;
+                            }
                         }
-                        else
+                        else //the user already exists
                         {
-                            API.sendChatMessageToPlayer(player, "~r~Error: ~w~Something when wrong when creating your account. Please try again or contact an owner..");
-                            break;
+                            API.sendChatMessageToPlayer(player, "~r~Error:~w~ This name seems to be registered already. Please ~b~/login [pass]");
+                        } 
+                    }
+                }//end loop  
+            }
+        }
+
+        [Command("login", "~r~Usage: ~w~/login [password] - Logs you in to your account.", GreedyArg = true, SensitiveInfo = true)]
+        public void login(Client player, string password)
+        {
+            if(db.userNameExist(player.name))
+            {
+                if (db.GetUserPass(player.name) == BCrypt.Net.BCrypt.HashPassword(password))
+                {
+                    foreach(Player pl in Players)
+                    {
+                        if(pl.playerHandle == player.handle)
+                        {
+                            pl.logged_in = true;
                         }
                     }
                 }
-                
-               
-
-                    
-                    //show dialog or any window
+            }
+            else
+            {
+                API.sendChatMessageToPlayer(player, "~r~Error: ~w~This name (" + player.name+") is not registered before. Use ~r~/register");
             }
         }
+
+
+        [Command("godmode")]
+        public void godmode(Client player)
+        {
+            foreach(Player pl in Players)
+            {
+                if(pl.carHandle == player.handle)
+                {
+                    if (pl.logged_in == false)
+                    {
+                        API.sendChatMessageToPlayer(player, "~r~This command is only available for registered users. /register or /login please.");
+                        return;
+                    }
+                    if (player.invincible)
+                    {
+                        player.invincible = false;
+                        API.sendChatMessageToPlayer(player, "GodMode ~r~Disabled!");
+                    }
+                    else
+                    {
+                        player.invincible = true;
+                        API.sendChatMessageToPlayer(player, "GodMode ~g~Enabled!");
+                    }
+                }
+            }
+        }
+
         #endregion
 
         #region other publics
@@ -370,6 +532,13 @@ namespace denNorske.gta5.gamemode
         public NetHandle playerHandle;
         public Client player;
         public int userid;
+        public int kills;
+        public int deaths;
+        public int level;
+        public int score;
+        public int cookies;
+        public int hashouse;
+        public int skin;
         public bool logged_in = false;
         public NetHandle carHandle;
         public string playerName;
