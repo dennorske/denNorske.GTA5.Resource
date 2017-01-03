@@ -12,7 +12,7 @@ using denNorske_gta5;
 using System.Diagnostics;
 
 
-namespace data
+namespace denNorske_gta5.gamemode.data
 {
     public class Database
     {
@@ -64,7 +64,7 @@ namespace data
                 switch (ex.Number)
                 {
                     case 0:
-                        API.shared.consoleOutput("Cannot connect to server.  Contact administrator" + ex.Message + "(ex.Number" + ex.Number + ")");
+                        API.shared.consoleOutput("Cannot connect to server.  Contact administrator" + ex.Message + " (ex.Number" + ex.Number + ")");
                         break;
 
                     case 1045:

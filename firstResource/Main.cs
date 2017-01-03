@@ -9,8 +9,8 @@ using System.Data;
 using MySql.Data.MySqlClient;
 using GTANetworkShared;
 using GTANetworkServer;
-using data;
-using structure;
+using denNorske_gta5.gamemode.data;
+using denNorske_gta5.gamemode.structure;
 
 
 namespace denNorske_gta5.gamemode
@@ -47,16 +47,13 @@ namespace denNorske_gta5.gamemode
             API.setPlayerIntoVehicle(player, car, 0);
             CarInfo car2 = new CarInfo(car, player); //make a new object out of it
             Cars.Add(car2); //add to object list 
-            foreach(Player pl in Players)
+            foreach (Player pl in Players)
             {
-                if(pl.player == player)
+                if (pl.player == player)
                 {
                     pl.carHandle = car;
                 }
             }
-
-
-
 
         }
 
@@ -107,13 +104,19 @@ namespace denNorske_gta5.gamemode
         {
             if(userdb.userNameExist(player.name))
             {
-                if (userdb.GetUserPass(player.name) == BCrypt.Net.BCrypt.HashPassword(password))
+                if (BCrypt.Net.BCrypt.Verify(password, userdb.GetUserPass(player.name)))
                 {
                     foreach(Player pl in Players)
                     {
+                        if(pl.logged_in)
+                        {
+                            API.sendChatMessageToPlayer(player, "~r~Error: ~w~You have already logged in!");
+                            return;
+                        }
                         if(pl.playerHandle == player.handle)
                         {
                             pl.logged_in = true;
+                            API.sendChatMessageToPlayer(player, "You have successfully logged in!");
                             userdb.LoadUserStats(pl);
                         }
                     }
@@ -161,13 +164,13 @@ namespace denNorske_gta5.gamemode
                         {
                             if(cl.player == target)
                             {
-                                if(cl.level == aLevel)
-                                {
+                                if (cl.level == aLevel)
                                     API.sendChatMessageToPlayer(player, "~r~Error: ~w~This player already has this admin level");
-                                    break;
-                                }
-                                if (cl.level > aLevel) //demoted
+                                else if (cl.level > aLevel) //demoted
                                     API.sendChatMessageToPlayer(target, "~r~Demoted! ~w~You were demoted to level " + aLevel + " by " + player.name);
+                                else
+                                    API.sendChatMessageToPlayer(player, "~g~Promoted! ~w~You have been promoted to level " + aLevel + " by " + player.name);
+
                                 cl.level = aLevel;
                             }
                         }
@@ -179,7 +182,7 @@ namespace denNorske_gta5.gamemode
 
         [Command("godmode")]
         public void godmode(Client player)
-        {
+        { 
             foreach(Player pl in Players)
             {
                 if(pl.carHandle == player.handle)

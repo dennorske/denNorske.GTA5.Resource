@@ -9,9 +9,8 @@ using System.Threading.Tasks;
 using MySql.Data.MySqlClient;
 using System.IO;
 using System.Diagnostics;
-using denNorske_gta5;
 
-namespace structure
+namespace denNorske_gta5.gamemode.structure
 {
     public class Player
     {

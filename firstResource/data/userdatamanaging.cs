@@ -10,11 +10,11 @@ using GTANetworkServer;
 using System.IO;
 using System.Diagnostics;
 using denNorske_gta5;
-using structure;
+using denNorske_gta5.gamemode.structure;
 
 
 
-namespace data
+namespace denNorske_gta5.gamemode.data
 {
     public class userdatamanaging
     {
@@ -43,6 +43,7 @@ namespace data
                                 }
                             }
                         }
+                        db.CloseConnection();
                     }
                 }
                 catch (Exception ex)
@@ -63,12 +64,14 @@ namespace data
             {
                 if (db.OpenConnection() == true)
                 {
-                    MySqlCommand cmd = new MySqlCommand(myQue, db.connection);
-                    cmd.Parameters.AddWithValue("@name", username);
-                    cmd.Parameters.AddWithValue("@password", password);
-                    cmd.ExecuteNonQuery();
-                    db.CloseConnection();
-                    return GetUserID(username);
+                    using (MySqlCommand cmd = new MySqlCommand(myQue, db.connection))
+                    {
+                        cmd.Parameters.AddWithValue("@name", username);
+                        cmd.Parameters.AddWithValue("@password", password);
+                        cmd.ExecuteNonQuery();
+                        db.CloseConnection();
+                        return GetUserID(username);
+                    }
                 }
 
             }
@@ -136,13 +139,17 @@ namespace data
                                     player.kills = (int)rdr["Kills"];
                                     player.deaths = (int)rdr["Deaths"];
                                     player.level = (int)rdr["Level"]; //admin level
-                                    db.CloseConnection();
                                 }
                             }
                             else
+                            {
+                                db.CloseConnection();
                                 return false;
+                            }
+                               
                         }
                     }
+                    db.CloseConnection();
                 }
 
             }
